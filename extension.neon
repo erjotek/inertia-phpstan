@@ -1,0 +1,10 @@
+services:
+    -
+        class: Adrum\Inertia\PHPStan\InertiaExtension
+        tags:
+            - phpstan.extension
+
+    -
+        class: Adrum\Inertia\PHPStan\Rules\InertiaPageExistsRule
+        tags:
+            - phpstan.rules.rule
