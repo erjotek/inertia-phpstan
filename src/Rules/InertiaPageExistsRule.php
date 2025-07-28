@@ -9,6 +9,7 @@ use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Scalar\String_;
 use PHPStan\Analyser\Scope;
+use PHPStan\File\FileHelper;
 use PHPStan\Rules\Rule;
 use PHPStan\Rules\RuleErrorBuilder;
 
@@ -19,9 +20,12 @@ class InertiaPageExistsRule implements Rule
 {
     private array $pageDirectories;
     private array $pageExtensions;
+    private FileHelper $fileHelper;
 
-    public function __construct()
+    public function __construct(FileHelper $fileHelper)
     {
+        $this->fileHelper = $fileHelper;
+
         // Default Laravel/Inertia configuration
         $this->pageDirectories = [
             'resources/js/Pages',
@@ -50,7 +54,7 @@ class InertiaPageExistsRule implements Rule
 
     public function processNode(Node $node, Scope $scope): array
     {
-        if (!$this->isInertiaCall($node)) {
+            if (!$this->isInertiaCall($node)) {
             return [];
         }
 
@@ -134,11 +138,15 @@ class InertiaPageExistsRule implements Rule
         // Convert dot notation to file path (e.g., "Auth/Login" or "Auth.Login")
         $pagePath = str_replace(['.', '/'], DIRECTORY_SEPARATOR, $pageName);
 
+        // Get the project root directory (where composer.json is located)
+        $projectRoot = $this->findProjectRoot();
+
         foreach ($this->pageDirectories as $directory) {
             foreach ($this->pageExtensions as $extension) {
-                $fullPath = $directory . DIRECTORY_SEPARATOR . $pagePath . $extension;
+                $fullPath = $projectRoot . DIRECTORY_SEPARATOR . $directory . DIRECTORY_SEPARATOR . $pagePath . $extension;
+                $normalizedPath = $this->fileHelper->normalizePath($fullPath);
 
-                if (file_exists($fullPath)) {
+                if (is_file($normalizedPath)) {
                     return true;
                 }
             }
@@ -146,4 +154,21 @@ class InertiaPageExistsRule implements Rule
 
         return false;
     }
+
+    private function findProjectRoot(): string
+    {
+        $currentDir = getcwd();
+
+        // Walk up the directory tree looking for composer.json
+        while ($currentDir !== DIRECTORY_SEPARATOR) {
+            if (file_exists($currentDir . DIRECTORY_SEPARATOR . 'composer.json')) {
+                return $currentDir;
+            }
+            $currentDir = dirname($currentDir);
+        }
+
+        // Fallback to current working directory
+        return getcwd();
+    }
+
 }

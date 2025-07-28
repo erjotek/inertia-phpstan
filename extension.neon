@@ -6,5 +6,12 @@ services:
 
     -
         class: Adrum\Inertia\PHPStan\Rules\InertiaPageExistsRule
+        arguments:
+            - @PHPStan\File\FileHelper
         tags:
             - phpstan.rules.rule
+
+    -
+        class: Adrum\Inertia\PHPStan\Cache\InertiaPagesCacheMetaExtension
+        tags:
+            - phpstan.resultCacheMetaExtension
