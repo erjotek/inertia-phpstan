@@ -14,7 +14,7 @@ use PHPStan\Rules\Rule;
 use PHPStan\Rules\RuleErrorBuilder;
 
 /**
- * @implements Rule<Node>
+ * @implements Rule<StaticCall>
  */
 class InertiaPageExistsRule implements Rule
 {
@@ -49,16 +49,17 @@ class InertiaPageExistsRule implements Rule
 
     public function getNodeType(): string
     {
-        return Node::class;
+        return StaticCall::class;
     }
 
     public function processNode(Node $node, Scope $scope): array
     {
-            if (!$this->isInertiaCall($node)) {
+        if (!$node instanceof StaticCall) {
             return [];
         }
 
-        $pageName = $this->extractPageName($node);
+        $pageName = $this->extractInertiaPageName($node);
+
         if ($pageName === null) {
             return [];
         }
@@ -74,60 +75,43 @@ class InertiaPageExistsRule implements Rule
         return [];
     }
 
-    private function isInertiaCall(Node $node): bool
+    private function extractInertiaPageName(StaticCall $node): ?string
     {
-        // Check for Inertia::render() static calls
-        if ($node instanceof StaticCall) {
-            if (
-                $node->class instanceof Node\Name &&
-                (string) $node->class === 'Inertia' &&
-                $node->name instanceof Node\Identifier &&
-                $node->name->name === 'render'
-            ) {
-                return true;
-            }
-        }
-
-        // Check for inertia() helper function calls
-        if ($node instanceof Node\Expr\FuncCall) {
-            if (
-                $node->name instanceof Node\Name &&
-                (string) $node->name === 'inertia'
-            ) {
-                return true;
-            }
-        }
-
-        // Check for $this->inertia() method calls in controllers
-        if ($node instanceof MethodCall) {
-            if (
-                $node->name instanceof Node\Identifier &&
-                $node->name->name === 'inertia'
-            ) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private function extractPageName(Node $node): ?string
-    {
-        $args = null;
-
-        if ($node instanceof StaticCall || $node instanceof Node\Expr\FuncCall) {
-            $args = $node->args;
-        } elseif ($node instanceof MethodCall) {
-            $args = $node->args;
-        }
-
-        if ($args === null || count($args) === 0) {
+        if (!$node->class instanceof Node\Name) {
             return null;
         }
 
-        $firstArg = $args[0]->value;
-        if ($firstArg instanceof String_) {
-            return $firstArg->value;
+        if (!$node->name instanceof Node\Identifier) {
+            return null;
+        }
+
+        $className = (string) $node->class;
+        $methodName = $node->name->name;
+
+        // Inertia::render('PageName', [...])
+        if (($className === 'Inertia' || $className === 'Inertia\Inertia') && $methodName === 'render') {
+            return $this->getStringArgument($node, 0);
+        }
+
+        // Route::inertia('/path', 'PageName', [...])
+        if (($className === 'Route' || $className === 'Illuminate\Support\Facades\Route') && $methodName === 'inertia') {
+            return $this->getStringArgument($node, 1);
+        }
+
+        return null;
+    }
+
+    private function getStringArgument(StaticCall $node, int $index): ?string
+    {
+        $args = $node->args;
+
+        if (count($args) <= $index) {
+            return null;
+        }
+
+        $arg = $args[$index]->value;
+        if ($arg instanceof String_) {
+            return $arg->value;
         }
 
         return null;
@@ -170,5 +154,4 @@ class InertiaPageExistsRule implements Rule
         // Fallback to current working directory
         return getcwd();
     }
-
 }
